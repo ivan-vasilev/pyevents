@@ -12,20 +12,20 @@ class EventsTest(unittest.TestCase):
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
 
         @before
-        def method_with_before():
+        def method_with_before(x):
             self.assertTrue(listeners_called['listener_1'])
             self.assertTrue(listeners_called['listener_2'])
-            listeners_called['method_with_before'] = True
+            listeners_called['method_with_before'] = x
 
-        def listener_1():
-            listeners_called['listener_1'] = True
+        def listener_1(x):
+            listeners_called['listener_1'] = x
 
-        def listener_2():
-            listeners_called['listener_2'] = True
+        def listener_2(x):
+            listeners_called['listener_2'] = x
 
         method_with_before += listener_1
         method_with_before += listener_2
-        method_with_before()
+        method_with_before(True)
 
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
@@ -35,22 +35,23 @@ class EventsTest(unittest.TestCase):
 
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
 
-        @before
-        def method_with_before():
-            self.assertTrue(listeners_called['listener_1'])
-            self.assertTrue(listeners_called['listener_2'])
-            listeners_called['method_with_before'] = True
+        class TestClass(object):
 
-        def listener_1():
+            @before
+            def method_with_before(self):
+                listeners_called['method_with_before'] = True
+
+        def listener_1(*args, **kwargs):
             listeners_called['listener_1'] = True
 
-        def listener_2():
+        def listener_2(*args, **kwargs):
             listeners_called['listener_2'] = True
 
         listeners = [listener_1, listener_2]
 
-        method_with_before += listeners
-        method_with_before()
+        test_class = TestClass()
+        test_class.method_with_before += listeners
+        test_class.method_with_before()
 
         self.assertEqual(len(listeners), 2)
         self.assertTrue(listeners_called['listener_1'])

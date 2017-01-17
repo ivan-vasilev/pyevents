@@ -1,0 +1,202 @@
+import unittest
+from pyevents.events import *
+
+
+class EventsTest(unittest.TestCase):
+    """
+    Test events
+    """
+
+    def test_before_1(self):
+
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        @before
+        def method_with_before():
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        method_with_before += listener_1
+        method_with_before += listener_2
+        method_with_before()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_before_2(self):
+
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        @before
+        def method_with_before():
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        listeners = [listener_1, listener_2]
+
+        method_with_before += listeners
+        method_with_before()
+
+        self.assertEqual(len(listeners), 2)
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_after_1(self):
+
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_after': False}
+
+        @after
+        def method_with_after():
+            self.assertFalse(listeners_called['listener_1'])
+            self.assertFalse(listeners_called['listener_2'])
+            listeners_called['method_with_after'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        method_with_after += listener_1
+        method_with_after += listener_2
+        method_with_after()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_after'])
+
+    def test_after_2(self):
+
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_after': False}
+
+        @after
+        def method_with_after():
+            self.assertFalse(listeners_called['listener_1'])
+            self.assertFalse(listeners_called['listener_2'])
+            listeners_called['method_with_after'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        listeners = [listener_1, listener_2]
+        method_with_after += listeners
+        method_with_after()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_after'])
+
+    def test_source_combination(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        listeners = list()
+
+        @before
+        def method_with_before():
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = True
+
+        def listener_1():
+            self.assertFalse(listeners_called['listener_1'])
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            self.assertFalse(listeners_called['listener_2'])
+            listeners_called['listener_2'] = True
+
+        listeners.append(listener_1)
+        method_with_before += listeners
+        method_with_before += listener_2
+        method_with_before()
+
+        self.assertEqual(len(listeners), 1)
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_multiple_lists(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        @before
+        def method_with_before():
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        method_with_before += listener_1
+        method_with_before += [listener_2]
+        method_with_before()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_remove_listeners(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'listener_3': False, 'listener_4': False, 'method_with_before': False}
+
+        @before
+        def method_with_before():
+            self.assertFalse(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            self.assertFalse(listeners_called['listener_3'])
+            self.assertTrue(listeners_called['listener_4'])
+            listeners_called['method_with_before'] = True
+
+        def listener_1():
+            listeners_called['listener_1'] = True
+
+        def listener_2():
+            listeners_called['listener_2'] = True
+
+        def listener_3():
+            listeners_called['listener_2'] = True
+
+        def listener_4():
+            listeners_called['listener_4'] = True
+
+        method_with_before += listener_1
+        method_with_before += listener_2
+
+        listener_3_list = [listener_3]
+        method_with_before += listener_3_list
+        method_with_before += [listener_4]
+
+        method_with_before -= listener_1
+        method_with_before -= listener_3_list
+
+        method_with_before()
+
+        self.assertFalse(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertFalse(listeners_called['listener_3'])
+        self.assertTrue(listeners_called['listener_4'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+if __name__ == '__main__':
+    unittest.main()

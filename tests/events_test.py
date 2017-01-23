@@ -199,5 +199,38 @@ class EventsTest(unittest.TestCase):
         self.assertTrue(listeners_called['listener_4'])
         self.assertTrue(listeners_called['method_with_before'])
 
+    def test_multiple_classes(self):
+        class Subject(object):
+            def __init__(self):
+                self.counter = 0
+
+            @before
+            def on_stuff(self):
+                pass
+
+        # Now define an event handler, the observer
+        handler_1_calls = list()
+
+        def handler1(*args, **kwargs):
+            handler_1_calls.append(1)
+
+        handler_2_calls = list()
+
+        def handler2(*args, **kwargs):
+            handler_2_calls.append(1)
+
+        sub = Subject()
+        sub.on_stuff += handler1
+
+        sub2 = Subject()
+        sub2.on_stuff += handler2
+
+        sub.on_stuff()
+        sub2.on_stuff()
+
+        self.assertEqual(len(handler_1_calls), 1)
+        self.assertEqual(len(handler_2_calls), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

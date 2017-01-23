@@ -4,90 +4,99 @@ import itertools
 import functools
 
 
-class _BaseDecorator(metaclass=ABCMeta):
-    """
-    Base innder decorator. Necessary for iadd/isub methods to work and to have parameters simultaneously
-    """
+class _ChainedLists(object):
 
-    def __init__(self, list_of_listener_iterables=None, default_listeners = None):
-        self.list_of_listener_iterables = list_of_listener_iterables if list_of_listener_iterables is not None else list()
-        self.default_listeners = default_listeners if default_listeners is not None else list()
+    def __init__(self):
+        self.list_of_iterables = list()
+        self.default_list = list()
 
-    def __iadd__(self, listener):
-        if not isinstance(listener, str) and isinstance(listener, Iterable):
-            self.list_of_listener_iterables.append(listener)
+    def __iadd__(self, item):
+        if not isinstance(item, str) and isinstance(item, Iterable):
+            self.list_of_iterables.append(item)
         else:
-            if isinstance(self.default_listeners, list):
-                self.default_listeners.append(listener)
+            if isinstance(self.default_list, list):
+                self.default_list.append(item)
             else:
-                self.default_listeners += listener
+                self.default_list += item
 
         return self
 
-    def __isub__(self, listener):
-        if not isinstance(listener, str) and isinstance(listener, Iterable):
-            self.list_of_listener_iterables.remove(listener)
+    def __isub__(self, item):
+        if not isinstance(item, str) and isinstance(item, Iterable):
+            self.list_of_iterables.remove(item)
         else:
-            if isinstance(self.default_listeners, list):
-                self.default_listeners.remove(listener)
+            if isinstance(self.default_list, list):
+                self.default_list.remove(item)
             else:
-                self.default_listeners -= listener
+                self.default_list -= item
 
         return self
 
-    def _call_listeners(self, *args, **kwargs):
-        for f in itertools.chain(self.default_listeners, *self.list_of_listener_iterables):
-            f(*args, **kwargs)
+    def __iter__(self):
+        self.chain = itertools.chain(self.default_list, *self.list_of_iterables)
+        return self
 
-FUNCTION_OUTPUT = "function_output"
+    def __next__(self):
+        return next(self.chain)
 
 
-class before(_BaseDecorator):
+class _BaseEvent(object):
     """
     Notifies listeners before method execution. For use, check the unit test
     """
 
-    def __init__(self, fn):
+    def __init__(self, function):
         super().__init__()
-        self.fn = fn
+        self._function = function
+        self._listeners = _ChainedLists()
+        self._listeners_dict = dict()
+
+    def __iadd__(self, listener):
+        self._listeners.__iadd__(listener)
+        return self
+
+    def __isub__(self, listener):
+        self._listeners.__isub__(listener)
+        return self
 
     def __get__(self, obj, objtype):
-        func = functools.partial(self.__call__, obj)
+        if obj not in self._listeners_dict:
+            self._listeners_dict[obj] = _ChainedLists()
 
-        class GetDecorator(_BaseDecorator):
-            def __call__(self, *args, **kwargs):
-                return func(*args, **kwargs)
+        result = type(self)(functools.partial(self._function, obj))
+        result._listeners = self._listeners_dict[obj]
+        return result
 
-        return GetDecorator(self.list_of_listener_iterables, self.default_listeners)
+    def __set__(self, instance, value):
+        pass
+
+
+class before(_BaseEvent):
+    """
+    Notifies listeners before method execution. For use, check the unit test
+    """
 
     def __call__(self, *args, **kwargs):
-        self._call_listeners(*args, **kwargs)
-        return self.fn(*args, **kwargs)
+        for f in self._listeners:
+            f(*args, **kwargs)
+
+        return self._function(*args, **kwargs)
 
 
-class after(_BaseDecorator):
+FUNCTION_OUTPUT = "function_output"
+
+
+class after(_BaseEvent):
     """
     Notifies listeners after method execution. See the unit test on how to use
     """
 
-    def __init__(self, fn):
-        super().__init__()
-        self.fn = fn
-
-    def __get__(self, obj, objtype):
-        func = functools.partial(self.__call__, obj)
-
-        class GetDecorator(_BaseDecorator):
-            def __call__(self, *args, **kwargs):
-                return func(*args, **kwargs)
-
-        return GetDecorator(self.list_of_listener_iterables, self.default_listeners)
-
     def __call__(self, *args, **kwargs):
-        result = self.fn(*args, **kwargs)
+        result = self._function(*args, **kwargs)
         if result is not None:
             kwargs[FUNCTION_OUTPUT] = result
 
-        self._call_listeners(*args, **kwargs)
+        for f in self._listeners:
+            f(*args, **kwargs)
 
         return result

@@ -1,10 +1,9 @@
-from abc import *
 from collections import Iterable
 import itertools
 import functools
 
 
-class _ChainedLists(object):
+class ChainedLists(object):
 
     def __init__(self):
         self.list_of_iterables = list()
@@ -48,7 +47,7 @@ class _BaseEvent(object):
     def __init__(self, function):
         super().__init__()
         self._function = function
-        self._listeners = _ChainedLists()
+        self._listeners = ChainedLists()
         self._listeners_dict = dict()
 
     def __iadd__(self, listener):
@@ -61,7 +60,7 @@ class _BaseEvent(object):
 
     def __get__(self, obj, objtype):
         if obj not in self._listeners_dict:
-            self._listeners_dict[obj] = _ChainedLists()
+            self._listeners_dict[obj] = ChainedLists()
 
         result = type(self)(functools.partial(self._function, obj))
         result._listeners = self._listeners_dict[obj]

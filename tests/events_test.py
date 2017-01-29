@@ -68,10 +68,10 @@ class EventsTest(unittest.TestCase):
             self.assertFalse(listeners_called['listener_2'])
             listeners_called['method_with_after'] = True
 
-        def listener_1():
+        def listener_1(*args):
             listeners_called['listener_1'] = True
 
-        def listener_2():
+        def listener_2(*args):
             listeners_called['listener_2'] = True
 
         method_with_after += listener_1
@@ -92,10 +92,10 @@ class EventsTest(unittest.TestCase):
             self.assertFalse(listeners_called['listener_2'])
             listeners_called['method_with_after'] = True
 
-        def listener_1():
+        def listener_1(*args):
             listeners_called['listener_1'] = True
 
-        def listener_2():
+        def listener_2(*args):
             listeners_called['listener_2'] = True
 
         listeners = [listener_1, listener_2]

@@ -76,13 +76,10 @@ class before(_BaseEvent):
     """
 
     def __call__(self, *args, **kwargs):
-        for f in self._listeners:
-            f(*args, **kwargs)
+        for l in [l for l in self._listeners if l != self]:
+            l(*args, **kwargs)
 
         return self._function(*args, **kwargs)
-
-
-FUNCTION_OUTPUT = "function_output"
 
 
 class after(_BaseEvent):
@@ -92,10 +89,9 @@ class after(_BaseEvent):
 
     def __call__(self, *args, **kwargs):
         result = self._function(*args, **kwargs)
-        if result is not None:
-            kwargs[FUNCTION_OUTPUT] = result
 
-        for f in self._listeners:
-            f(*args, **kwargs)
+        for l in [l for l in self._listeners if l != self]:
+            listener_result = l(result)
+            result = listener_result if listener_result is not None else result
 
         return result

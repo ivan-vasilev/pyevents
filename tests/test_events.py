@@ -2,7 +2,7 @@ import unittest
 from pyevents.events import *
 
 
-class EventsTest(unittest.TestCase):
+class TestEvents(unittest.TestCase):
     """
     Test events
     """
@@ -12,12 +12,12 @@ class EventsTest(unittest.TestCase):
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
 
         @before
-        def method_with_before(x):
+        async def method_with_before(x):
             self.assertTrue(listeners_called['listener_1'])
             self.assertTrue(listeners_called['listener_2'])
             listeners_called['method_with_before'] = x
 
-        def listener_1(x):
+        async def listener_1(x):
             listeners_called['listener_1'] = x
 
         def listener_2(x):

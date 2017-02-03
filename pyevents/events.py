@@ -1,10 +1,12 @@
-from collections import Iterable
-import itertools
 import functools
+import itertools
+import queue
+import threading
+from collections import Iterable
+import asyncio
 
 
 class ChainedLists(object):
-
     def __init__(self):
         self.list_of_iterables = list()
         self.default_list = list()
@@ -37,6 +39,19 @@ class ChainedLists(object):
 
     def __next__(self):
         return next(self.chain)
+
+
+class _AsyncListeners(threading.Thread):
+    def __init__(self):
+        super().__init__()
+
+        self.jobs_queue = queue.Queue()
+        self.results_queue = queue.Queue()
+
+    def run(self):
+        for (f, args, kwargs) in iter(self.jobs_queue, None):
+            result = f(*args, **kwargs)
+            self.results_queue.put((f, result))
 
 
 class _BaseEvent(object):
@@ -76,10 +91,23 @@ class before(_BaseEvent):
     """
 
     def __call__(self, *args, **kwargs):
-        for l in [l for l in self._listeners if l != self]:
-            l(*args, **kwargs)
+        if threading.current_thread() != threading.main_thread():
+            try:
+                asyncio.get_event_loop()
+            except RuntimeError:
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
-        return self._function(*args, **kwargs)
+        tasks = [asyncio.coroutine(functools.partial(l, *args, **kwargs))() for l in self._listeners if l != self]
+        asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
+
+        if asyncio.iscoroutinefunction(self._function):
+            result = asyncio.get_event_loop().run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
+        else:
+            result = self._function(*args, **kwargs)
+
+        return result
+
+import threading
 
 
 class after(_BaseEvent):
@@ -88,10 +116,18 @@ class after(_BaseEvent):
     """
 
     def __call__(self, *args, **kwargs):
-        result = self._function(*args, **kwargs)
+        if threading.current_thread() != threading.main_thread():
+            try:
+                asyncio.get_event_loop()
+            except RuntimeError:
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
-        for l in [l for l in self._listeners if l != self]:
-            listener_result = l(result)
-            result = listener_result if listener_result is not None else result
+        if asyncio.iscoroutinefunction(self._function):
+            result = asyncio.get_event_loop().run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
+        else:
+            result = self._function(*args, **kwargs)
+
+        tasks = [asyncio.coroutine(functools.partial(l, result))() for l in self._listeners if l != self]
+        asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
 
         return result

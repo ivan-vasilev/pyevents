@@ -1,9 +1,9 @@
 import functools
 import itertools
 import queue
-import threading
 from collections import Iterable
 import asyncio
+import threading
 
 
 class ChainedLists(object):
@@ -97,17 +97,21 @@ class before(_BaseEvent):
             except RuntimeError:
                 asyncio.set_event_loop(asyncio.new_event_loop())
 
+        loop = asyncio.get_event_loop()
+
         tasks = [asyncio.coroutine(functools.partial(l, *args, **kwargs))() for l in self._listeners if l != self]
-        asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
+
+        gathered = asyncio.gather(*tasks, loop)
+
+        if not loop.is_running():
+            loop.run_until_complete(gathered)
 
         if asyncio.iscoroutinefunction(self._function):
-            result = asyncio.get_event_loop().run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
+            result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
         else:
             result = self._function(*args, **kwargs)
 
         return result
-
-import threading
 
 
 class after(_BaseEvent):
@@ -122,12 +126,18 @@ class after(_BaseEvent):
             except RuntimeError:
                 asyncio.set_event_loop(asyncio.new_event_loop())
 
+        loop = asyncio.get_event_loop()
+
         if asyncio.iscoroutinefunction(self._function):
-            result = asyncio.get_event_loop().run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
+            result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
         else:
             result = self._function(*args, **kwargs)
 
         tasks = [asyncio.coroutine(functools.partial(l, result))() for l in self._listeners if l != self]
-        asyncio.get_event_loop().run_until_complete(asyncio.gather(*tasks))
+
+        gathered = asyncio.gather(*tasks)
+
+        if not loop.is_running():
+            loop.run_until_complete(gathered)
 
         return result

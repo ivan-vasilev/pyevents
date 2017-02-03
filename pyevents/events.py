@@ -41,19 +41,6 @@ class ChainedLists(object):
         return next(self.chain)
 
 
-class _AsyncListeners(threading.Thread):
-    def __init__(self):
-        super().__init__()
-
-        self.jobs_queue = queue.Queue()
-        self.results_queue = queue.Queue()
-
-    def run(self):
-        for (f, args, kwargs) in iter(self.jobs_queue, None):
-            result = f(*args, **kwargs)
-            self.results_queue.put((f, result))
-
-
 class _BaseEvent(object):
     """
     Notifies listeners before method execution. For use, check the unit test
@@ -64,22 +51,29 @@ class _BaseEvent(object):
         self._function = function
         self._listeners = ChainedLists()
         self._listeners_dict = dict()
+        self._lock = threading.RLock()
 
     def __iadd__(self, listener):
-        self._listeners.__iadd__(listener)
-        return self
+        with self._lock:
+            self._listeners.__iadd__(listener)
+
+            return self
 
     def __isub__(self, listener):
-        self._listeners.__isub__(listener)
-        return self
+        with self._lock:
+            self._listeners.__isub__(listener)
+
+            return self
 
     def __get__(self, obj, objtype):
-        if obj not in self._listeners_dict:
-            self._listeners_dict[obj] = ChainedLists()
+        with self._lock:
+            if obj not in self._listeners_dict:
+                self._listeners_dict[obj] = ChainedLists()
 
-        result = type(self)(functools.partial(self._function, obj))
-        result._listeners = self._listeners_dict[obj]
-        return result
+            result = type(self)(functools.partial(self._function, obj))
+            result._listeners = self._listeners_dict[obj]
+
+            return result
 
     def __set__(self, instance, value):
         pass
@@ -91,27 +85,28 @@ class before(_BaseEvent):
     """
 
     def __call__(self, *args, **kwargs):
-        if threading.current_thread() != threading.main_thread():
-            try:
-                asyncio.get_event_loop()
-            except RuntimeError:
-                asyncio.set_event_loop(asyncio.new_event_loop())
+        with self._lock:
+            if threading.current_thread() != threading.main_thread():
+                try:
+                    asyncio.get_event_loop()
+                except RuntimeError:
+                    asyncio.set_event_loop(asyncio.new_event_loop())
 
-        loop = asyncio.get_event_loop()
+            loop = asyncio.get_event_loop()
 
-        tasks = [asyncio.coroutine(functools.partial(l, *args, **kwargs))() for l in self._listeners if l != self]
+            tasks = [asyncio.coroutine(functools.partial(l, *args, **kwargs))() for l in self._listeners if l != self]
 
-        gathered = asyncio.gather(*tasks, loop)
+            gathered = asyncio.gather(*tasks, loop=loop)
 
-        if not loop.is_running():
-            loop.run_until_complete(gathered)
+            if not loop.is_running():
+                loop.run_until_complete(gathered)
 
-        if asyncio.iscoroutinefunction(self._function):
-            result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
-        else:
-            result = self._function(*args, **kwargs)
+            if asyncio.iscoroutinefunction(self._function):
+                result = loop.run_until_complete(functools.partial(self._function, *args, **kwargs)())
+            else:
+                result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
 
-        return result
+            return result
 
 
 class after(_BaseEvent):
@@ -120,24 +115,25 @@ class after(_BaseEvent):
     """
 
     def __call__(self, *args, **kwargs):
-        if threading.current_thread() != threading.main_thread():
-            try:
-                asyncio.get_event_loop()
-            except RuntimeError:
-                asyncio.set_event_loop(asyncio.new_event_loop())
+        with self._lock:
+            if threading.current_thread() != threading.main_thread():
+                try:
+                    asyncio.get_event_loop()
+                except RuntimeError:
+                    asyncio.set_event_loop(asyncio.new_event_loop())
 
-        loop = asyncio.get_event_loop()
+            loop = asyncio.get_event_loop()
 
-        if asyncio.iscoroutinefunction(self._function):
-            result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
-        else:
-            result = self._function(*args, **kwargs)
+            if asyncio.iscoroutinefunction(self._function):
+                result = loop.run_until_complete(functools.partial(self._function, *args, **kwargs)())
+            else:
+                result = loop.run_until_complete(asyncio.coroutine(functools.partial(self._function, *args, **kwargs))())
 
-        tasks = [asyncio.coroutine(functools.partial(l, result))() for l in self._listeners if l != self]
+            tasks = [asyncio.coroutine(functools.partial(l, result))() for l in self._listeners if l != self]
 
-        gathered = asyncio.gather(*tasks)
+            gathered = asyncio.gather(*tasks, loop=loop)
 
-        if not loop.is_running():
-            loop.run_until_complete(gathered)
+            if not loop.is_running():
+                loop.run_until_complete(gathered)
 
-        return result
+            return result

@@ -13,32 +13,6 @@ class AsyncListeners(object):
         self._default_list = list()
         self.__queue = None
 
-    @property
-    def _queue(self):
-        if self.__queue is None:
-            self.__queue = queue.Queue()
-
-            def call_listeners(q):
-                for (task, callback) in iter(q.get, None):
-                    logging.getLogger(__name__).debug("Run task from queue: " + str(task))
-
-                    result = task()
-
-                    if result is not None:
-                        logging.getLogger(__name__).debug("Task result: " + str(result))
-
-                    if callback is not None:
-                        callback(result)
-
-                    q.task_done()
-
-            t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
-            t.start()
-
-            logging.getLogger(__name__).debug("Queue thread started: " + str(t))
-
-        return self.__queue
-
     def __iadd__(self, item):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.append(item)
@@ -68,14 +42,40 @@ class AsyncListeners(object):
     def __next__(self):
         return next(self.chain)
 
-    def add_to_queue(self, function, callback=None):
+    @property
+    def _queue(self):
+        if self.__queue is None:
+            self.__queue = queue.Queue()
+
+            def call_listeners(q):
+                for (task, callback) in iter(q.get, None):
+                    logging.getLogger(__name__).debug("Run task from queue: " + str(task))
+
+                    result = task()
+
+                    if result is not None:
+                        logging.getLogger(__name__).debug("Task result: " + str(result))
+
+                    if callback is not None:
+                        callback(result)
+
+                    q.task_done()
+
+            t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
+            logging.getLogger(__name__).debug("Starting queue thread: " + str(t))
+            t.start()
+
+        return self.__queue
+
+    def wrap_async(self, function, callback=None):
         task_queue = self.__queue_by_element(function)
 
         def wrapper(*args, **kwargs):
-            if callback is not None:
-                logging.getLogger(__name__).debug("Queue task: " + str(function) + "; Callback: " + str(callback))
-            else:
-                logging.getLogger(__name__).debug("Queue task: " + str(function))
+            logging.getLogger(__name__).debug(
+                "\n===================================================================\nQueue task: " + str(
+                    function) + "; Callback: " + str(callback) + "\nQueue task args: " + str(
+                    args) + "; kwargs: " + str(
+                    kwargs) + "\n===================================================================")
 
             task_queue.put((functools.partial(function, *args, **kwargs), callback))
 
@@ -111,11 +111,13 @@ class _BaseEvent(object):
         return self
 
     def __get__(self, obj, objtype):
-        if obj not in self._listeners_dict:
-            self._listeners_dict[obj] = AsyncListeners()
-
         result = type(self)(functools.partial(self._function, obj))
-        result._listeners = self._listeners_dict[obj]
+
+        key = hash((obj, self._function))
+        if key not in self._listeners_dict:
+            self._listeners_dict[key] = AsyncListeners()
+
+        result._listeners = self._listeners_dict[key]
 
         return result
 
@@ -139,9 +141,9 @@ class before(_BaseEvent):
 
     def __call__(self, *args, **kwargs):
         for l in [l for l in self._listeners if l != self]:
-            self._listeners.add_to_queue(l)(*args, **kwargs)
+            self._listeners.wrap_async(l)(*args, **kwargs)
 
-        self._listeners.add_to_queue(self._function, self.callback)(*args, **kwargs)
+        self._listeners.wrap_async(self._function, self.callback)(*args, **kwargs)
 
 
 class after(_BaseEvent):
@@ -163,6 +165,6 @@ class after(_BaseEvent):
                 self.callback(result)
 
             for l in [l for l in self._listeners if l != self]:
-                self._listeners.add_to_queue(l)(result)
+                self._listeners.wrap_async(l)(result)
 
-        self._listeners.add_to_queue(self._function, callback=callback)(*args, **kwargs)
+        self._listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)

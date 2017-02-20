@@ -25,10 +25,9 @@ class TestEvents(unittest.TestCase):
 
         e = threading.Event()
 
-        method_with_before.callback = lambda result: e.set()
         method_with_before += listener_1
         method_with_before += listener_2
-        method_with_before(True)
+        method_with_before(True, event_callback=lambda result: e.set())
 
         e.wait()
 
@@ -91,10 +90,9 @@ class TestEvents(unittest.TestCase):
 
         e = threading.Event()
 
-        method_with_after.callback = lambda result: e.set()
         method_with_after += listener_1
         method_with_after += listener_2
-        method_with_after()
+        method_with_after(event_callback=lambda result: e.set())
 
         e.wait()
         self.assertTrue(listeners_called['method_with_after'])

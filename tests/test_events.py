@@ -8,7 +8,6 @@ class TestEvents(unittest.TestCase):
     """
 
     def test_before_1(self):
-
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
 
         @before
@@ -36,13 +35,11 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['method_with_before'])
 
     def test_before_2(self):
-
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
 
         e = threading.Event()
 
         class TestClass(object):
-
             @before
             def method_with_before(self):
                 listeners_called['method_with_before'] = True
@@ -63,6 +60,35 @@ class TestEvents(unittest.TestCase):
         e.wait()
 
         self.assertEqual(len(listeners), 2)
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_before_3(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        e = threading.Event()
+
+        def method_with_before(x):
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = x
+            e.set()
+
+        before_wrapper = before(method_with_before)
+
+        def listener_1(x):
+            listeners_called['listener_1'] = x
+
+        def listener_2(x):
+            listeners_called['listener_2'] = x
+
+        before_wrapper += listener_1
+        before_wrapper += listener_2
+        before_wrapper(True)
+
+        e.wait()
+
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
         self.assertTrue(listeners_called['method_with_before'])
@@ -104,7 +130,6 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['listener_2'])
 
     def test_after_2(self):
-
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_after': False}
 
         @after
@@ -277,6 +302,34 @@ class TestEvents(unittest.TestCase):
 
         self.assertEqual(len(handler_1_calls), 1)
         self.assertEqual(len(handler_2_calls), 1)
+
+    def test_listeners(self):
+        listeners = AsyncListeners()
+
+        listeners_called = {'listener_1': False, 'listener_2': False}
+
+        e1 = threading.Event()
+
+        def listener_1(x):
+            listeners_called['listener_1'] = x
+            e1.set()
+
+        e2 = threading.Event()
+
+        def listener_2(x):
+            listeners_called['listener_2'] = x
+            e2.set()
+
+        listeners += listener_1
+        listeners += listener_2
+
+        listeners(True)
+
+        e1.wait()
+        e2.wait()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
 
 
 if __name__ == '__main__':

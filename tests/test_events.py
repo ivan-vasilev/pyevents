@@ -415,5 +415,22 @@ class TestEvents(unittest.TestCase):
         self.assertEqual(entries['function_1'], 3)
         self.assertEqual(entries['function_2'], 3)
 
+    def test_composite_result(self):
+
+        @after
+        def function():
+            return CompositeEvent([1, 2])
+
+        listener_calls = {'calls': 0}
+
+        def listener(x):
+            listener_calls['calls'] += 1
+
+        function += listener
+
+        function(run_async=False)
+
+        self.assertEqual(listener_calls['calls'], 2)
+
 if __name__ == '__main__':
     unittest.main()

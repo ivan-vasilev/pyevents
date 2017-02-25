@@ -138,6 +138,10 @@ class _BaseEvent(object):
         pass
 
 
+class CompositeEvent(list):
+    pass
+
+
 class before(_BaseEvent):
     """
     Notifies listeners before method execution. For use, check the unit test
@@ -172,8 +176,13 @@ class after(_BaseEvent):
                 if callback is not None:
                     callback(result)
 
-                for listener in [listener for listener in self._listeners if listener != self and l != self._function]:
-                    self._listeners.wrap_async(listener)(result)
+                if isinstance(result, CompositeEvent):
+                    for r in result:
+                        for l in [l for l in self._listeners if l != self and l != self._function]:
+                            self._listeners.wrap_async(l)(r)
+                else:
+                    for l in [l for l in self._listeners if l != self and l != self._function]:
+                        self._listeners.wrap_async(l)(result)
 
             self._listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
         else:
@@ -182,7 +191,12 @@ class after(_BaseEvent):
             if callback is not None:
                 callback(result)
 
-            for l in [l for l in self._listeners if l != self and l != self._function]:
-                l(result)
+            if isinstance(result, CompositeEvent):
+                for r in result:
+                    for l in [l for l in self._listeners if l != self and l != self._function]:
+                        l(r)
+            else:
+                for l in [l for l in self._listeners if l != self and l != self._function]:
+                    l(result)
 
             return result

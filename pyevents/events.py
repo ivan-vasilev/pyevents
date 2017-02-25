@@ -6,7 +6,7 @@ from collections import Iterable
 import logging
 
 
-class AsyncListeners(object):
+class LinkedLists(object):
     def __init__(self):
         self._list_of_iterables = list()
         self._default_list = list()
@@ -16,6 +16,9 @@ class AsyncListeners(object):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.append(item)
         else:
+            if __name__ == item.__module__ and hasattr(item, '_function'):
+                item = getattr(item, '_function')
+
             if isinstance(self._default_list, list):
                 self._default_list.append(item)
             else:
@@ -34,16 +37,22 @@ class AsyncListeners(object):
 
         return self
 
-    def __call__(self, *args, **kwargs):
-        for l in self:
-            self.wrap_async(l)(*args, **kwargs)
-
     def __iter__(self):
         self.chain = itertools.chain(self._default_list, *self._list_of_iterables)
         return self
 
     def __next__(self):
         return next(self.chain)
+
+
+class AsyncListeners(LinkedLists):
+    def __init__(self):
+        super().__init__()
+        self.__queue = None
+
+    def __call__(self, *args, **kwargs):
+        for l in self:
+            self.wrap_async(l)(*args, **kwargs)
 
     @property
     def _queue(self):
@@ -105,12 +114,10 @@ class _BaseEvent(object):
 
     def __iadd__(self, listener):
         self._listeners.__iadd__(listener)
-
         return self
 
     def __isub__(self, listener):
         self._listeners.__isub__(listener)
-
         return self
 
     def __get__(self, obj, objtype):
@@ -133,17 +140,22 @@ class before(_BaseEvent):
     Notifies listeners before method execution. For use, check the unit test
     """
 
-    def __call__(self, *args, **kwargs):
-        if 'event_callback' in kwargs:
-            callback = kwargs['event_callback']
-            del kwargs['event_callback']
+    def __call__(self, *args, run_async=True, callback=None, **kwargs):
+        if run_async:
+            for l in [l for l in self._listeners if l != self]:
+                self._listeners.wrap_async(l)(*args, **kwargs)
+
+            self._listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
         else:
-            callback = None
+            for l in [l for l in self._listeners if l != self]:
+                l(*args, **kwargs)
 
-        for l in [l for l in self._listeners if l != self]:
-            self._listeners.wrap_async(l)(*args, **kwargs)
+            result = self._function(*args, **kwargs)
 
-        self._listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
+            if callback is not None:
+                callback(result)
+
+            return result
 
 
 class after(_BaseEvent):
@@ -151,18 +163,23 @@ class after(_BaseEvent):
     Notifies listeners after method execution. See the unit test on how to use
     """
 
-    def __call__(self, *args, **kwargs):
-        if 'event_callback' in kwargs:
-            callback = kwargs['event_callback']
-            del kwargs['event_callback']
-        else:
-            callback = None
+    def __call__(self, *args, run_async=True, callback=None, **kwargs):
+        if run_async:
+            def internal_callback(result):
+                if callback is not None:
+                    callback(result)
 
-        def internal_callback(result):
+                for listener in [listener for listener in self._listeners if listener != self]:
+                    self._listeners.wrap_async(listener)(result)
+
+            self._listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
+        else:
+            result = self._function(*args, **kwargs)
+
             if callback is not None:
                 callback(result)
 
-            for listener in [listener for listener in self._listeners if listener != self]:
-                self._listeners.wrap_async(listener)(result)
+            for l in [l for l in self._listeners if l != self]:
+                l(result)
 
-        self._listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
+            return result

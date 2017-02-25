@@ -26,9 +26,32 @@ class TestEvents(unittest.TestCase):
 
         method_with_before += listener_1
         method_with_before += listener_2
-        method_with_before(True, event_callback=lambda result: e.set())
+        method_with_before(True, callback=lambda result: e.set())
 
         e.wait()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
+    def test_before_1_sync(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        @before
+        def method_with_before(x):
+            self.assertTrue(listeners_called['listener_1'])
+            self.assertTrue(listeners_called['listener_2'])
+            listeners_called['method_with_before'] = x
+
+        def listener_1(x):
+            listeners_called['listener_1'] = x
+
+        def listener_2(x):
+            listeners_called['listener_2'] = x
+
+        method_with_before += listener_1
+        method_with_before += listener_2
+        method_with_before(True, run_async=False)
 
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
@@ -118,13 +141,41 @@ class TestEvents(unittest.TestCase):
 
         method_with_after += listener_1
         method_with_after += listener_2
-        method_with_after(event_callback=lambda result: e.set())
+        method_with_after(callback=lambda result: e.set())
 
         e.wait()
         self.assertTrue(listeners_called['method_with_after'])
 
         e1.wait()
         e2.wait()
+
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+
+    def test_after_1_sync(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_after': False}
+
+        @after
+        def method_with_after():
+            self.assertFalse(listeners_called['listener_1'])
+            self.assertFalse(listeners_called['listener_2'])
+            listeners_called['method_with_after'] = True
+
+        e1 = threading.Event()
+
+        def listener_1(*args):
+            listeners_called['listener_1'] = True
+
+        e2 = threading.Event()
+
+        def listener_2(*args):
+            listeners_called['listener_2'] = True
+
+        method_with_after += listener_1
+        method_with_after += listener_2
+        method_with_after(run_async=False)
+
+        self.assertTrue(listeners_called['method_with_after'])
 
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
@@ -331,6 +382,44 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
 
+    def test_same_method(self):
+        listeners = AsyncListeners()
+
+        entries = {'function': False, 'function_to_function_1': False, 'function_1_to_function_2': False, 'function_2_to_function_1': False}
+
+        @after
+        def function():
+            entries['function'] = True
+            return 'function_to_function_1'
+
+        function += listeners
+
+        @after
+        def function_1(param):
+            if param == 'function_to_function_1':
+                entries[param] = True
+                return 'function_1_to_function_2'
+
+        function_1 += listeners
+        listeners += function_1
+
+        e = threading.Event()
+
+        @after
+        def function_2(param):
+            if param == 'function_1_to_function_2':
+                entries[param] = True
+                e.set()
+
+        function_2 += listeners
+        listeners += function_2
+
+        function()
+
+        e.wait()
+
+        for k, v in entries.values():
+            self.assertTrue(v)
 
 if __name__ == '__main__':
     unittest.main()

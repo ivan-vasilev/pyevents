@@ -16,6 +16,9 @@ class LinkedLists(object):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.append(item)
         else:
+            if __name__ == item.__module__ and hasattr(item, '_function'):
+                item = getattr(item, '_function')
+
             if isinstance(self._default_list, list):
                 self._default_list.append(item)
             else:
@@ -27,6 +30,9 @@ class LinkedLists(object):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.remove(item)
         else:
+            if __name__ == item.__module__ and hasattr(item, '_function'):
+                item = getattr(item, '_function')
+
             if isinstance(self._default_list, list):
                 self._default_list.remove(item)
             else:
@@ -139,12 +145,12 @@ class before(_BaseEvent):
 
     def __call__(self, *args, run_async=True, callback=None, **kwargs):
         if run_async:
-            for l in [l for l in self._listeners if l != self]:
+            for l in [l for l in self._listeners if l != self and l != self._function]:
                 self._listeners.wrap_async(l)(*args, **kwargs)
 
             self._listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
         else:
-            for l in [l for l in self._listeners if l != self]:
+            for l in [l for l in self._listeners if l != self and l != self._function]:
                 l(*args, **kwargs)
 
             result = self._function(*args, **kwargs)
@@ -166,7 +172,7 @@ class after(_BaseEvent):
                 if callback is not None:
                     callback(result)
 
-                for listener in [listener for listener in self._listeners if listener != self]:
+                for listener in [listener for listener in self._listeners if listener != self and l != self._function]:
                     self._listeners.wrap_async(listener)(result)
 
             self._listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
@@ -176,7 +182,7 @@ class after(_BaseEvent):
             if callback is not None:
                 callback(result)
 
-            for l in [l for l in self._listeners if l != self]:
+            for l in [l for l in self._listeners if l != self and l != self._function]:
                 l(result)
 
             return result

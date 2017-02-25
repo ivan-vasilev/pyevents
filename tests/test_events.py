@@ -385,48 +385,35 @@ class TestEvents(unittest.TestCase):
     def test_same_method(self):
         listeners = AsyncListeners()
 
-        entries = {'function': False, 'function_to_function_1': False, 'function_1_to_function_2': False, 'function_2_to_function_1': False}
+        entries = {'function': 0, 'function_1': 0, 'function_2': 0}
 
         @after
         def function():
-            entries['function'] = True
-            return 'function_to_function_1'
+            entries['function'] += 1
 
         function += listeners
 
-        e = threading.Event()
-
         @after
-        def function_1(param):
-            if param == 'function_to_function_1':
-                entries[param] = True
-                return 'function_1_to_function_2'
-            elif param == 'function_2_to_function_1':
-                entries[param] = True
-                e.set()
-
-            return 'function_1_called'
+        def function_1(param=None):
+            entries['function_1'] += 1
 
         function_1 += listeners
         listeners += function_1
 
         @after
-        def function_2(param):
-            if param == 'function_1_to_function_2':
-                entries[param] = True
-                return 'function_2_to_function_1'
-
-            return 'function_2_called'
+        def function_2(param=None):
+            entries['function_2'] += 1
 
         function_2 += listeners
         listeners += function_2
 
-        function()
+        function(run_async=False)
+        function_1(run_async=False)
+        function_2(run_async=False)
 
-        e.wait()
-
-        for v in entries.values():
-            self.assertTrue(v)
+        self.assertEqual(entries['function'], 1)
+        self.assertEqual(entries['function_1'], 3)
+        self.assertEqual(entries['function_2'], 3)
 
 if __name__ == '__main__':
     unittest.main()

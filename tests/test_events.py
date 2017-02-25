@@ -394,22 +394,29 @@ class TestEvents(unittest.TestCase):
 
         function += listeners
 
+        e = threading.Event()
+
         @after
         def function_1(param):
             if param == 'function_to_function_1':
                 entries[param] = True
                 return 'function_1_to_function_2'
+            elif param == 'function_2_to_function_1':
+                entries[param] = True
+                e.set()
+
+            return 'function_1_called'
 
         function_1 += listeners
         listeners += function_1
-
-        e = threading.Event()
 
         @after
         def function_2(param):
             if param == 'function_1_to_function_2':
                 entries[param] = True
-                e.set()
+                return 'function_2_to_function_1'
+
+            return 'function_2_called'
 
         function_2 += listeners
         listeners += function_2
@@ -418,7 +425,7 @@ class TestEvents(unittest.TestCase):
 
         e.wait()
 
-        for k, v in entries.values():
+        for v in entries.values():
             self.assertTrue(v)
 
 if __name__ == '__main__':

@@ -16,9 +16,6 @@ class LinkedLists(object):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.append(item)
         else:
-            if __name__ == item.__module__ and hasattr(item, '_function'):
-                item = getattr(item, '_function')
-
             if isinstance(self._default_list, list):
                 self._default_list.append(item)
             else:

@@ -116,6 +116,38 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['listener_2'])
         self.assertTrue(listeners_called['method_with_before'])
 
+    def test_before_4(self):
+        listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
+
+        e = threading.Event()
+
+        class TestClass(object):
+
+            @staticmethod
+            @before
+            def method_with_before():
+                listeners_called['method_with_before'] = True
+                e.set()
+
+        def listener_1(*args, **kwargs):
+            listeners_called['listener_1'] = True
+
+        def listener_2(*args, **kwargs):
+            listeners_called['listener_2'] = True
+
+        listeners = [listener_1, listener_2]
+
+        test_class = TestClass()
+        test_class.method_with_before += listeners
+        test_class.method_with_before()
+
+        e.wait()
+
+        self.assertEqual(len(listeners), 2)
+        self.assertTrue(listeners_called['listener_1'])
+        self.assertTrue(listeners_called['listener_2'])
+        self.assertTrue(listeners_called['method_with_before'])
+
     def test_after_1(self):
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_after': False}
 

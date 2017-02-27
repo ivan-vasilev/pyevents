@@ -7,6 +7,7 @@ import logging
 
 
 class LinkedLists(object):
+
     def __init__(self):
         self._list_of_iterables = list()
         self._default_list = list()
@@ -49,6 +50,7 @@ class LinkedLists(object):
 
 
 class AsyncListeners(LinkedLists):
+
     def __init__(self):
         super().__init__()
         self.__queue = None
@@ -56,6 +58,15 @@ class AsyncListeners(LinkedLists):
     def __call__(self, *args, **kwargs):
         for l in self:
             self.wrap_async(l)(*args, **kwargs)
+
+    def __iadd__(self, item):
+        for i in self:
+            if i == item:
+                return self
+
+        super().__iadd__(item)
+
+        return self
 
     @property
     def _queue(self):
@@ -113,7 +124,7 @@ class _BaseEvent(object):
         super().__init__()
         self._function = function
         self._listeners = AsyncListeners()
-        self._listeners_dict = dict()
+        self._events_dict = dict()
 
     def __iadd__(self, listener):
         self._listeners.__iadd__(listener)
@@ -124,15 +135,11 @@ class _BaseEvent(object):
         return self
 
     def __get__(self, obj, objtype):
-        result = type(self)(functools.partial(self._function, obj))
-
         key = hash((obj, self._function))
-        if key not in self._listeners_dict:
-            self._listeners_dict[key] = AsyncListeners()
+        if key not in self._events_dict:
+            self._events_dict[key] = type(self)(functools.partial(self._function, obj))
 
-        result._listeners = self._listeners_dict[key]
-
-        return result
+        return self._events_dict[key]
 
     def __set__(self, instance, value):
         pass

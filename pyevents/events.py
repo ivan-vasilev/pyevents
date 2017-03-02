@@ -159,9 +159,6 @@ class _EventGenerator(object, metaclass=_GlobalRegister):
         self._function = function
         self._listeners = AsyncListeners()
 
-        if hasattr(function, 'func'):
-            print (function)
-
         if type(self).default_listeners is not None:
             self._listeners += type(self).default_listeners
 

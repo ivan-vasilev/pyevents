@@ -487,7 +487,7 @@ class TestEvents(unittest.TestCase):
         def listener_2(x):
             listeners_called['listener_2'] = x
 
-        class Test(object):
+        class Test(object, metaclass=events.GlobalRegister):
 
             @staticmethod
             @events.listener
@@ -502,10 +502,9 @@ class TestEvents(unittest.TestCase):
             def method_test_2(self, x):
                 listeners_called['listener_5'] = x
 
-        x = Test()
-        x.method_test_2(False)
+        Test()
 
-        events.link_all()
+        events.use_global_event_bus()
         e = threading.Event()
 
         method_with_before(True, callback=lambda result: e.set())

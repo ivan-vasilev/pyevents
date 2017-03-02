@@ -1,6 +1,5 @@
 import collections
 import functools
-import gc
 import itertools
 import logging
 import queue
@@ -19,7 +18,7 @@ class ChainIterables(object):
             if item not in self._list_of_iterables:
                 self._list_of_iterables.append(item)
         else:
-            if __name__ == item.__module__ and hasattr(item, '_function'):
+            if isinstance(item, _EventGenerator):
                 item = getattr(item, '_function')
 
             if isinstance(self._default_iterable, list):
@@ -34,7 +33,7 @@ class ChainIterables(object):
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.remove(item)
         else:
-            if __name__ == item.__module__ and hasattr(item, '_function'):
+            if isinstance(item, _EventGenerator):
                 item = getattr(item, '_function')
 
             if isinstance(self._default_iterable, list):
@@ -52,6 +51,7 @@ class AsyncListeners(ChainIterables):
     def __init__(self, default_iterable=None):
         super().__init__(default_iterable=default_iterable)
         self.__queue = None
+        self.__running = False
 
     def __call__(self, *args, **kwargs):
         for l in self:
@@ -87,6 +87,7 @@ class AsyncListeners(ChainIterables):
 
             t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
             logging.getLogger(__name__).debug("Starting queue thread: " + str(t))
+            self.__running = True
             t.start()
 
         return self.__queue
@@ -113,11 +114,26 @@ class AsyncListeners(ChainIterables):
         return self._queue
 
 
-class _GlobalRegister(type):
+class GlobalRegister(type):
 
     event_generators = collections.OrderedDict()
     listeners = collections.OrderedDict()
     _default_listeners = None
+
+    def __call__(cls, *args, **kwargs):
+        obj = type.__call__(cls, *args, **kwargs)
+
+        if not isinstance(obj, _EventGenerator) and not isinstance(obj, listener):
+            for attr in type(obj).__dict__:
+                getattr(obj, attr)
+
+        return obj
+
+    @classmethod
+    def reset(mcs):
+        mcs.default_listeners = None
+        mcs.event_generators.clear()
+        mcs.listeners.clear()
 
     @property
     def default_listeners(cls):
@@ -125,42 +141,50 @@ class _GlobalRegister(type):
 
     @default_listeners.setter
     def default_listeners(cls, default_listeners):
-        if cls._default_listeners is not None:
-            for _, e in cls.event_generators.items():
-                e -= cls._default_listeners
-
         cls._default_listeners = default_listeners
 
         for _, e in cls.event_generators.items():
-            e += cls._default_listeners
+            e.listeners = cls._default_listeners
 
     @property
     def event_generators_list(cls):
-        return _GlobalRegister.DictToList(cls.event_generators)
+        return GlobalRegister.DictToList(cls.event_generators)
 
     @property
     def listeners_list(cls):
-        return _GlobalRegister.DictToList(cls.listeners)
+        return GlobalRegister.DictToList(cls.listeners)
 
     class DictToList(object):
         def __init__(self, dictionary):
-            self.dictionary = dictionary
+            self._dictionary = dictionary
 
         def __iter__(self):
-            return iter(self.dictionary.values())
+            return iter(self._dictionary.values())
+
+        def __isub__(self, item):
+            key = None
+            for k, v in self._dictionary.items():
+                if v == item:
+                    key = k
+                    break
+
+            del self._dictionary[key]
+
+            return self
 
 
-class _EventGenerator(object, metaclass=_GlobalRegister):
+class _EventGenerator(object, metaclass=GlobalRegister):
     """
     Base event class that handles listeners
     """
 
     def __init__(self, function, key=None):
         self._function = function
-        self._listeners = AsyncListeners()
 
         if type(self).default_listeners is not None:
-            self._listeners += type(self).default_listeners
+            self.listeners = type(self).default_listeners
+        else:
+            self.listeners = AsyncListeners()
 
         if key is None:
             key = hash(function)
@@ -168,11 +192,11 @@ class _EventGenerator(object, metaclass=_GlobalRegister):
         type(self).event_generators[key] = self
 
     def __iadd__(self, listener):
-        self._listeners.__iadd__(listener)
+        self.listeners.__iadd__(listener)
         return self
 
     def __isub__(self, listener):
-        self._listeners.__isub__(listener)
+        self.listeners.__isub__(listener)
         return self
 
     def __get__(self, obj, objtype=None):
@@ -201,12 +225,12 @@ class before(_EventGenerator):
 
     def __call__(self, *args, run_async=True, callback=None, **kwargs):
         if run_async:
-            for l in [l for l in self._listeners if l != self and l != self._function]:
-                self._listeners.wrap_async(l)(*args, **kwargs)
+            for l in [l for l in self.listeners if l != self and l != self._function]:
+                self.listeners.wrap_async(l)(*args, **kwargs)
 
-            self._listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
+            self.listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
         else:
-            for l in [l for l in self._listeners if l != self and l != self._function]:
+            for l in [l for l in self.listeners if l != self and l != self._function]:
                 l(*args, **kwargs)
 
             result = self._function(*args, **kwargs)
@@ -230,13 +254,13 @@ class after(_EventGenerator):
 
                 if isinstance(result, CompositeEvent):
                     for r in result:
-                        for l in [l for l in self._listeners if l != self and l != self._function]:
-                            self._listeners.wrap_async(l)(r)
+                        for l in [l for l in self.listeners if l != self and l != self._function]:
+                            self.listeners.wrap_async(l)(r)
                 else:
-                    for l in [l for l in self._listeners if l != self and l != self._function]:
-                        self._listeners.wrap_async(l)(result)
+                    for l in [l for l in self.listeners if l != self and l != self._function]:
+                        self.listeners.wrap_async(l)(result)
 
-            self._listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
+            self.listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
         else:
             result = self._function(*args, **kwargs)
 
@@ -245,16 +269,16 @@ class after(_EventGenerator):
 
             if isinstance(result, CompositeEvent):
                 for r in result:
-                    for l in [l for l in self._listeners if l != self and l != self._function]:
+                    for l in [l for l in self.listeners if l != self and l != self._function]:
                         l(r)
             else:
-                for l in [l for l in self._listeners if l != self and l != self._function]:
+                for l in [l for l in self.listeners if l != self and l != self._function]:
                     l(result)
 
             return result
 
 
-class listener(object, metaclass=_GlobalRegister):
+class listener(object, metaclass=GlobalRegister):
 
     def __init__(self, function, key=None):
         super().__init__()
@@ -279,45 +303,9 @@ class listener(object, metaclass=_GlobalRegister):
         return self._function(*args, **kwargs)
 
 
-def link_all():
-    def __qualapth(obj):
-        split = obj.__qualname__.split('.')
-        return '.'.join(obj.__qualname__.split('.')[:-1]) if len(split) > 1 else obj
+def reset():
+    GlobalRegister.reset()
 
-    class_event_generators = dict()
-    class_listeners = dict()
 
-    for obj in gc.get_objects():
-        try:
-            cond = isinstance(obj, _EventGenerator) and not isinstance(obj._function, functools.partial)
-        except:
-            pass
-
-        if cond:
-            qualpath = __qualapth(obj._function)
-            if qualpath not in class_event_generators:
-                class_event_generators[qualpath] = list()
-
-            class_event_generators[qualpath].append(obj._function)
-        else:
-            try:
-                cond = isinstance(obj, listener) and not isinstance(obj._function, functools.partial)
-            except:
-                pass
-
-            if cond:
-                qualpath = __qualapth(obj._function)
-                if qualpath not in class_listeners:
-                    class_listeners[qualpath] = list()
-
-                class_listeners[qualpath].append(obj._function)
-    for obj in gc.get_objects():
-        if type(obj).__qualname__ in class_event_generators:
-            for attr in class_event_generators[type(obj).__qualname__]:
-                getattr(obj, attr.__name__)
-
-        if type(obj).__qualname__ in class_listeners:
-            for attr in class_listeners[type(obj).__qualname__]:
-                getattr(obj, attr.__name__)
-
+def use_global_event_bus():
     _EventGenerator.default_listeners = AsyncListeners(listener.listeners_list)

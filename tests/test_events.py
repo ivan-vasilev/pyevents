@@ -1,6 +1,5 @@
 import unittest
 import pyevents.events as events
-import importlib
 import threading
 
 
@@ -10,7 +9,7 @@ class TestEvents(unittest.TestCase):
     """
 
     def setUp(self):
-        importlib.reload(events)
+        events.reset()
 
     def test_before_1(self):
         listeners_called = {'listener_1': False, 'listener_2': False, 'method_with_before': False}
@@ -471,6 +470,7 @@ class TestEvents(unittest.TestCase):
 
     def test_automatic_linking(self):
 
+        events.use_global_event_bus()
         listeners_called = {'listener_1': False, 'listener_2': False, 'listener_3': False, 'listener_4': False, 'listener_5': False, 'method_with_before': False}
 
         @events.before

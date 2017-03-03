@@ -48,6 +48,7 @@ class ChainIterables(object):
 
 
 class AsyncListeners(ChainIterables):
+
     def __init__(self, default_iterable=None):
         super().__init__(default_iterable=default_iterable)
         self.__queue = None
@@ -85,6 +86,9 @@ class AsyncListeners(ChainIterables):
 
                     q.task_done()
 
+                    if not self.__running:
+                        return
+
             t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
             logging.getLogger(__name__).debug("Starting queue thread: " + str(t))
             self.__running = True
@@ -105,6 +109,9 @@ class AsyncListeners(ChainIterables):
             task_queue.put((functools.partial(function, *args, **kwargs), callback))
 
         return wrapper
+
+    def stop(self):
+        self.__running = False
 
     def __queue_by_element(self, function):
         for l in self._list_of_iterables:
@@ -129,11 +136,10 @@ class GlobalRegister(type):
 
         return obj
 
-    @classmethod
-    def reset(mcs):
-        mcs.default_listeners = None
-        mcs.event_generators.clear()
-        mcs.listeners.clear()
+    def reset(cls):
+        cls.default_listeners = None
+        cls.event_generators.clear()
+        cls.listeners.clear()
 
     @property
     def default_listeners(cls):
@@ -141,6 +147,9 @@ class GlobalRegister(type):
 
     @default_listeners.setter
     def default_listeners(cls, default_listeners):
+        if cls._default_listeners is not None and isinstance(cls._default_listeners, AsyncListeners):
+            cls._default_listeners.stop()
+
         cls._default_listeners = default_listeners
 
         for _, e in cls.event_generators.items():
@@ -304,7 +313,7 @@ class listener(object, metaclass=GlobalRegister):
 
 
 def reset():
-    GlobalRegister.reset()
+    _EventGenerator.reset()
 
 
 def use_global_event_bus():

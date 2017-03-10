@@ -123,8 +123,8 @@ class AsyncListeners(ChainIterables):
 
 class GlobalRegister(type):
 
-    event_generators = collections.OrderedDict()
-    listeners = collections.OrderedDict()
+    global_event_generators = collections.OrderedDict()
+    global_listeners = collections.OrderedDict()
     _default_listeners = None
 
     def __call__(cls, *args, **kwargs):
@@ -134,12 +134,16 @@ class GlobalRegister(type):
             for attr in type(obj).__dict__:
                 getattr(obj, attr)
 
+        if isinstance(obj, _EventGenerator):
+            if cls.default_listeners is not None:
+                obj.listeners = cls.default_listeners
+
         return obj
 
     def reset(cls):
         cls.default_listeners = None
-        cls.event_generators.clear()
-        cls.listeners.clear()
+        cls.global_event_generators.clear()
+        cls.global_listeners.clear()
 
     @property
     def default_listeners(cls):
@@ -152,16 +156,16 @@ class GlobalRegister(type):
 
         cls._default_listeners = default_listeners
 
-        for _, e in cls.event_generators.items():
-            e.listeners = cls._default_listeners
+        for _, e in cls.global_event_generators.items():
+            e.listeners = default_listeners if default_listeners is not None else AsyncListeners()
 
     @property
     def event_generators_list(cls):
-        return GlobalRegister.DictToList(cls.event_generators)
+        return GlobalRegister.DictToList(cls.global_event_generators)
 
     @property
     def listeners_list(cls):
-        return GlobalRegister.DictToList(cls.listeners)
+        return GlobalRegister.DictToList(cls.global_listeners)
 
     class DictToList(object):
         def __init__(self, dictionary):
@@ -190,15 +194,23 @@ class _EventGenerator(object, metaclass=GlobalRegister):
     def __init__(self, function, key=None):
         self._function = function
 
-        if type(self).default_listeners is not None:
-            self.listeners = type(self).default_listeners
-        else:
-            self.listeners = AsyncListeners()
+        self._listeners = None
 
         if key is None:
             key = hash(function)
 
-        type(self).event_generators[key] = self
+        type(self).global_event_generators[key] = self
+
+    @property
+    def listeners(self):
+        if self._listeners is None:
+            self._listeners = AsyncListeners()
+
+        return self._listeners
+
+    @listeners.setter
+    def listeners(self, listeners):
+        self._listeners = listeners
 
     def __iadd__(self, listener):
         self.listeners.__iadd__(listener)
@@ -210,14 +222,14 @@ class _EventGenerator(object, metaclass=GlobalRegister):
 
     def __get__(self, obj, objtype=None):
         bound_key = hash((obj, self._function))
-        if bound_key not in type(self).event_generators:
+        if bound_key not in type(self).global_event_generators:
             type(self)(functools.partial(self._function, obj), bound_key)
 
         unbound_key = hash(self._function)
-        if unbound_key in type(self).event_generators:
-            del type(self).event_generators[unbound_key]
+        if unbound_key in type(self).global_event_generators:
+            del type(self).global_event_generators[unbound_key]
 
-        return type(self).event_generators[bound_key]
+        return type(self).global_event_generators[bound_key]
 
     def __set__(self, instance, value):
         pass
@@ -295,18 +307,18 @@ class listener(object, metaclass=GlobalRegister):
         if key is None:
             key = hash(function)
 
-        type(self).listeners[key] = self
+        type(self).global_listeners[key] = self
 
     def __get__(self, obj, objtype):
         bound_key = hash((obj, self._function))
-        if bound_key not in type(self).listeners:
+        if bound_key not in type(self).global_listeners:
             type(self)(functools.partial(self._function, obj), bound_key)
 
         unbound_key = hash(self._function)
-        if unbound_key in type(self).listeners:
-            del type(self).listeners[unbound_key]
+        if unbound_key in type(self).global_listeners:
+            del type(self).global_listeners[unbound_key]
 
-        return type(self).listeners[bound_key]
+        return type(self).global_listeners[bound_key]
 
     def __call__(self, *args, **kwargs):
         return self._function(*args, **kwargs)

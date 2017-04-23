@@ -76,18 +76,24 @@ class AsyncListeners(ChainIterables):
                 for (task, callback) in iter(q.get, None):
                     logging.getLogger(__name__).debug("Run task from queue: " + str(task))
 
-                    result = task()
+                    try:
+                        result = task()
+                    except Exception as err:
+                        if callback is not None:
+                            callback(err)
+                        else:
+                            logging.getLogger(__name__).exception(err)
+                    else:
+                        if result is not None:
+                            logging.getLogger(__name__).debug("Task result: " + str(result))
 
-                    if result is not None:
-                        logging.getLogger(__name__).debug("Task result: " + str(result))
+                        if callback is not None:
+                            callback(result)
 
-                    if callback is not None:
-                        callback(result)
-
-                    q.task_done()
-
-                    if not self.__running:
-                        return
+                        q.task_done()
+                    finally:
+                        if not self.__running:
+                            return
 
             t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
             logging.getLogger(__name__).debug("Starting queue thread: " + str(t))
@@ -106,7 +112,13 @@ class AsyncListeners(ChainIterables):
                     args) + "; kwargs: " + str(
                     kwargs) + "\n===================================================================")
 
-            task_queue.put((functools.partial(function, *args, **kwargs), callback))
+            def internal_callback(result):
+                if isinstance(result, Exception):
+                    raise result
+                else:
+                    callback(result)
+
+            task_queue.put((functools.partial(function, *args, **kwargs), internal_callback if callback is not None else None))
 
         return wrapper
 
@@ -131,7 +143,7 @@ class GlobalRegister(type):
         obj = type.__call__(cls, *args, **kwargs)
 
         if not isinstance(obj, _EventGenerator) and not isinstance(obj, listener):
-            for attr in type(obj).__dict__:
+            for attr in [item[0] for item in type(obj).__dict__.items() if not isinstance(item[1], property)]:
                 getattr(obj, attr)
 
         if isinstance(obj, _EventGenerator):

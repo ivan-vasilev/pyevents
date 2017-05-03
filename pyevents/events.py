@@ -1,5 +1,6 @@
 import collections
 import functools
+import inspect
 import itertools
 import logging
 import queue
@@ -333,7 +334,10 @@ class listener(object, metaclass=GlobalRegister):
         return type(self).global_listeners[bound_key]
 
     def __call__(self, *args, **kwargs):
-        return self._function(*args, **kwargs)
+        # check if the parameters are compatible with the listener signature. If not, don't use this listener
+        spec = inspect.getfullargspec(self._function)
+        if len(spec.args) - (0 if spec.defaults is None else len(spec.defaults)) == len(args):
+            return self._function(*args, **kwargs)
 
 
 def reset():

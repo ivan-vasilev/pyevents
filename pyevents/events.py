@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 from collections import Iterable
+from concurrent.futures import ThreadPoolExecutor
 
 
 class ChainIterables(object):
@@ -52,86 +53,54 @@ class AsyncListeners(ChainIterables):
 
     def __init__(self, default_iterable=None):
         super().__init__(default_iterable=default_iterable)
-        self.__queue = None
-        self.__running = False
+        self.__executor = None
 
     def __call__(self, *args, **kwargs):
         for l in self:
-            self.wrap_async(l)(*args, **kwargs)
+            self.wrap_async(l, *args, **kwargs)
 
     def __iadd__(self, item):
         for i in self:
             if i == item:
                 return self
 
-        super().__iadd__(item)
-
-        return self
+        return super().__iadd__(item)
 
     @property
-    def _queue(self):
-        if self.__queue is None:
-            self.__queue = queue.Queue()
+    def _executor(self):
+        if self.__executor is None:
+            self.__executor = ThreadPoolExecutor()
 
-            def call_listeners(q):
-                for (task, callback) in iter(q.get, None):
-                    logging.getLogger(__name__).debug("Run task from queue: " + str(task))
+        return self.__executor
 
-                    try:
-                        result = task()
-                    except Exception as err:
-                        if callback is not None:
-                            callback(err)
-                        else:
-                            logging.getLogger(__name__).exception(err)
-                    else:
-                        if result is not None:
-                            logging.getLogger(__name__).debug("Task result: " + str(result))
+    def shutdown(self, wait=True):
+        if self.__executor is not None:
+            self.__executor.shutdown(wait=wait)
 
-                        if callback is not None:
-                            callback(result)
+    def wrap_async(self, fn, *args, **kwargs):
+        def wrapper():
+            logging.getLogger(__name__).debug("Run task from queue: " + str(fn))
 
-                        q.task_done()
-                    finally:
-                        if not self.__running:
-                            return
+            try:
+                result = fn(*args, **kwargs)
+            except Exception as err:
+                logging.getLogger(__name__).exception(err)
+                return err
+            else:
+                if result is not None:
+                    logging.getLogger(__name__).debug("Task result: " + str(result.keys() if isinstance(result, dict) else result))
 
-            t = threading.Thread(target=call_listeners, args=(self.__queue,), daemon=True)
-            logging.getLogger(__name__).debug("Starting queue thread: " + str(t))
-            self.__running = True
-            t.start()
+                return result
 
-        return self.__queue
+        executor = self.__executor_by_element(fn)
+        return executor.submit(wrapper)
 
-    def wrap_async(self, function, callback=None):
-        task_queue = self.__queue_by_element(function)
-
-        def wrapper(*args, **kwargs):
-            logging.getLogger(__name__).debug(
-                "\n===================================================================\nQueue task: " + str(
-                    function) + "; Callback: " + str(callback) + "\nQueue task args: " + str(
-                    args) + "; kwargs: " + str(
-                    kwargs) + "\n===================================================================")
-
-            def internal_callback(result):
-                if isinstance(result, Exception):
-                    raise result
-                else:
-                    callback(result)
-
-            task_queue.put((functools.partial(function, *args, **kwargs), internal_callback if callback is not None else None))
-
-        return wrapper
-
-    def stop(self):
-        self.__running = False
-
-    def __queue_by_element(self, function):
+    def __executor_by_element(self, fn):
         for l in self._list_of_iterables:
             if isinstance(l, type(self)):
-                return l.__queue_by_element(function)
+                return l.__executor_by_element(fn)
 
-        return self._queue
+        return self._executor
 
 
 class GlobalRegister(type):
@@ -165,7 +134,7 @@ class GlobalRegister(type):
     @default_listeners.setter
     def default_listeners(cls, default_listeners):
         if cls._default_listeners is not None and isinstance(cls._default_listeners, AsyncListeners):
-            cls._default_listeners.stop()
+            cls._default_listeners.shutdown(wait=False)
 
         cls._default_listeners = default_listeners
 
@@ -204,13 +173,13 @@ class _EventGenerator(object, metaclass=GlobalRegister):
     Base event class that handles listeners
     """
 
-    def __init__(self, function, key=None):
-        self._function = function
+    def __init__(self, fn, key=None):
+        self._function = fn
 
         self._listeners = None
 
         if key is None:
-            key = hash(function)
+            key = hash(fn)
 
         type(self).global_event_generators[key] = self
 
@@ -247,6 +216,9 @@ class _EventGenerator(object, metaclass=GlobalRegister):
     def __set__(self, instance, value):
         pass
 
+    def __str__(self):
+        return self._function.__str__()
+
 
 class CompositeEvent(list):
     pass
@@ -259,10 +231,20 @@ class before(_EventGenerator):
 
     def __call__(self, *args, run_async=True, callback=None, **kwargs):
         if run_async:
-            for l in [l for l in self.listeners if l != self and l != self._function]:
-                self.listeners.wrap_async(l)(*args, **kwargs)
+            listener_results = list()
 
-            self.listeners.wrap_async(self._function, callback=callback)(*args, **kwargs)
+            for l in [l for l in self.listeners if l != self and l != self._function]:
+                listener_results.append(self.listeners.wrap_async(l, *args, **kwargs))
+
+            for lr in listener_results:
+                lr.result()
+
+            result = self.listeners.wrap_async(self._function, *args, **kwargs)
+
+            if callback is not None:
+                result.add_done_callback(lambda r: callback(r.result()))
+
+            return result
         else:
             for l in [l for l in self.listeners if l != self and l != self._function]:
                 l(*args, **kwargs)
@@ -289,12 +271,16 @@ class after(_EventGenerator):
                 if isinstance(result, CompositeEvent):
                     for r in result:
                         for l in [l for l in self.listeners if l != self and l != self._function]:
-                            self.listeners.wrap_async(l)(r)
+                            self.listeners.wrap_async(l, r)
                 else:
                     for l in [l for l in self.listeners if l != self and l != self._function]:
-                        self.listeners.wrap_async(l)(result)
+                        self.listeners.wrap_async(l, result)
 
-            self.listeners.wrap_async(self._function, callback=internal_callback)(*args, **kwargs)
+            result = self.listeners.wrap_async(self._function, *args, **kwargs)
+
+            result.add_done_callback(lambda r: internal_callback(r.result()))
+
+            return result
         else:
             result = self._function(*args, **kwargs)
 
@@ -314,11 +300,11 @@ class after(_EventGenerator):
 
 class listener(object, metaclass=GlobalRegister):
 
-    def __init__(self, function, key=None):
+    def __init__(self, fn, key=None):
         super().__init__()
-        self._function = function
+        self._function = fn
         if key is None:
-            key = hash(function)
+            key = hash(fn)
 
         type(self).global_listeners[key] = self
 
@@ -338,6 +324,9 @@ class listener(object, metaclass=GlobalRegister):
         spec = inspect.getfullargspec(self._function)
         if len(spec.args) - (0 if spec.defaults is None else len(spec.defaults)) == len(args):
             return self._function(*args, **kwargs)
+
+    def __str__(self):
+        return self._function.__str__()
 
 
 def reset():

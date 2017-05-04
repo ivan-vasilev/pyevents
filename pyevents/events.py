@@ -133,13 +133,14 @@ class GlobalRegister(type):
 
     @default_listeners.setter
     def default_listeners(cls, default_listeners):
-        if cls._default_listeners is not None and isinstance(cls._default_listeners, AsyncListeners):
-            cls._default_listeners.shutdown(wait=False)
+        if cls._default_listeners != default_listeners:
+            if cls._default_listeners is not None and isinstance(cls._default_listeners, AsyncListeners):
+                cls._default_listeners.shutdown(wait=False)
 
-        cls._default_listeners = default_listeners
+            cls._default_listeners = default_listeners
 
-        for _, e in cls.global_event_generators.items():
-            e.listeners = default_listeners if default_listeners is not None else AsyncListeners()
+            for _, e in cls.global_event_generators.items():
+                e.listeners = default_listeners if default_listeners is not None else AsyncListeners()
 
     @property
     def event_generators_list(cls):

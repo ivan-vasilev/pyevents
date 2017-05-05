@@ -3,8 +3,6 @@ import functools
 import inspect
 import itertools
 import logging
-import queue
-import threading
 from collections import Iterable
 from concurrent.futures import ThreadPoolExecutor
 

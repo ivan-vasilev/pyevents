@@ -223,6 +223,19 @@ class CompositeEvent(list):
     pass
 
 
+class event(_EventGenerator):
+    """
+    Simple event class, when called is inserted in the event bus
+    """
+    def __call__(self, *args, callback=None, **kwargs):
+        result = self.listeners.wrap_async(self._function, *args, **kwargs)
+
+        if callback is not None:
+            result.add_done_callback(lambda r: callback(r.result()))
+
+        return result
+
+
 class before(_EventGenerator):
     """
     Notifies listeners before method execution. For use, check the unit test

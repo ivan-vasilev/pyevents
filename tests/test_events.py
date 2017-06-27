@@ -518,5 +518,21 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['listener_5'])
         self.assertTrue(listeners_called['method_with_before'])
 
+    def test_simple_event(self):
+        listeners_called = {'method_with_event': False}
+
+        e = threading.Event()
+
+        @events.event
+        def method_with_event():
+            listeners_called['method_with_event'] = True
+            e.set()
+
+        method_with_event()
+
+        e.wait()
+
+        self.assertTrue(listeners_called['method_with_event'])
+
 if __name__ == '__main__':
     unittest.main()

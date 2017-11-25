@@ -87,6 +87,8 @@ listener_1 called with argument: success
 listener_2 called with argument: success
 ```
 
+You can find out more on how to use by checking the unit tests.
+
 #### Author
 Ivan Vasilev (ivanvasilev [at] gmail (dot) com)
 

@@ -223,25 +223,12 @@ class CompositeEvent(list):
     pass
 
 
-class event(_EventGenerator):
-    """
-    Simple event class, when called is inserted in the event bus
-    """
-    def __call__(self, *args, callback=None, **kwargs):
-        result = self.listeners.wrap_async(self._function, *args, **kwargs)
-
-        if callback is not None:
-            result.add_done_callback(lambda r: callback(r.result()))
-
-        return result
-
-
 class before(_EventGenerator):
     """
     Notifies listeners before method execution. For use, check the unit test
     """
 
-    def __call__(self, *args, run_async=True, callback=None, **kwargs):
+    def __call__(self, *args, run_async=True, **kwargs):
         if run_async:
             listener_results = list()
 
@@ -250,23 +237,11 @@ class before(_EventGenerator):
 
             for lr in listener_results:
                 lr.result()
-
-            result = self.listeners.wrap_async(self._function, *args, **kwargs)
-
-            if callback is not None:
-                result.add_done_callback(lambda r: callback(r.result()))
-
-            return result
         else:
             for l in [l for l in self.listeners if l != self and l != self._function]:
                 l(*args, **kwargs)
 
-            result = self._function(*args, **kwargs)
-
-            if callback is not None:
-                callback(result)
-
-            return result
+        return self._function(*args, **kwargs)
 
 
 class after(_EventGenerator):
@@ -274,31 +249,18 @@ class after(_EventGenerator):
     Notifies listeners after method execution. See the unit test on how to use
     """
 
-    def __call__(self, *args, run_async=True, callback=None, **kwargs):
+    def __call__(self, *args, run_async=True, **kwargs):
+        result = self._function(*args, **kwargs)
+
         if run_async:
-            def internal_callback(result):
-                if callback is not None:
-                    callback(result)
-
-                if isinstance(result, CompositeEvent):
-                    for r in result:
-                        for l in [l for l in self.listeners if l != self and l != self._function]:
-                            self.listeners.wrap_async(l, r)
-                else:
+            if isinstance(result, CompositeEvent):
+                for r in result:
                     for l in [l for l in self.listeners if l != self and l != self._function]:
-                        self.listeners.wrap_async(l, result)
-
-            result = self.listeners.wrap_async(self._function, *args, **kwargs)
-
-            result.add_done_callback(lambda r: internal_callback(r.result()))
-
-            return result
+                        self.listeners.wrap_async(l, r)
+            else:
+                for l in [l for l in self.listeners if l != self and l != self._function]:
+                    self.listeners.wrap_async(l, result)
         else:
-            result = self._function(*args, **kwargs)
-
-            if callback is not None:
-                callback(result)
-
             if isinstance(result, CompositeEvent):
                 for r in result:
                     for l in [l for l in self.listeners if l != self and l != self._function]:
@@ -307,7 +269,7 @@ class after(_EventGenerator):
                 for l in [l for l in self.listeners if l != self and l != self._function]:
                     l(result)
 
-            return result
+        return result
 
 
 class listener(object, metaclass=GlobalRegister):

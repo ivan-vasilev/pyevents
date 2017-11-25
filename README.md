@@ -1,6 +1,6 @@
 # Lightweight Asynchronous Events For Python
 
-Lightweight async events python library with decorators. There 2 modes of operation - local and global
+Lightweight async events python library with decorators. There are two modes of operation - local and global
 
 ### Local
 This is the default mode. You can add **before** and **after** listeners to event providers manually. Here is how it works with **before**:
@@ -87,7 +87,7 @@ listener_1 called with argument: success
 listener_2 called with argument: success
 ```
 
-You can find out more on how to use by checking the unit tests.
+This is the gist of it. There are some more use cases in the unit tests.
 
 #### Author
 Ivan Vasilev (ivanvasilev [at] gmail (dot) com)

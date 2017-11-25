@@ -2,8 +2,8 @@
 
 Lightweight async events python library with decorators. There 2 modes of operation - local and global
 
-## Local
-This is the default mode. You can add **before** and **after** listeners to event providers manually. Here is how it works with before:
+### Local
+This is the default mode. You can add **before** and **after** listeners to event providers manually. Here is how it works with **before**:
 
 ```python
 import pyevents.events as events
@@ -21,9 +21,9 @@ def listener_2(x):
 function_with_before += listener_1
 function_with_before += listener_2
 ```
-So when we call:
+So when you call:
 ```python 
->>> method_with_before()
+>>> function_with_before('argument')
 listener_1 called with argument: argument
 listener_2 called with argument: argument
 function_with_before called with argument: argument
@@ -52,9 +52,43 @@ function_with_after += listener_2
 
 And the result will be:
 ```python 
->>> method_with_after()
+>>> function_with_after('argument')
 function_with_after called with argument: argument
 listener_1 called with argument: success
 listener_2 called with argument: success
 ```
-Please keep in mind that the _after_ decorator is asynchronous 
+Please keep in mind that the _after_ decorator is asynchronous.
+
+### Global
+If you aim at fully event driven architecture, it will become tedious to maintain all the provider/listener connections. To help you with this the library supports global mode, where **all** event providers and listeners share the same global event bus by default. If you use global mode the previous example becomes:
+
+```python 
+import pyevents.events as events
+
+events.use_global_event_bus()
+
+@events.after
+def function_with_after(x):
+    print('function_with_after called with argument: ' + x)
+    return 'success'
+
+@events.listener
+def listener_1(result):
+    print('listener_1 called with argument: ' + result)
+
+@events.listener
+def listener_2(result):
+    print('listener_2 called with argument: ' + result)
+
+
+>>> function_with_after('argument')
+function_with_after called with argument: argument
+listener_1 called with argument: success
+listener_2 called with argument: success
+```
+
+#### Author
+Ivan Vasilev (ivanvasilev [at] gmail (dot) com)
+
+#### License
+[MIT License](http://opensource.org/licenses/MIT)

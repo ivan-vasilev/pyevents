@@ -57,7 +57,6 @@ function_with_after called with argument: argument
 listener_1 called with argument: success
 listener_2 called with argument: success
 ```
-Please keep in mind that the _after_ decorator is asynchronous.
 
 ### Global
 If you aim at fully event driven architecture, it will become tedious to maintain all the provider/listener connections. To help you with this the library supports global mode, where **all** event providers and listeners share the same global event bus by default. If you use global mode the previous example becomes:

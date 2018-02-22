@@ -154,6 +154,25 @@ class TestEvents(unittest.TestCase):
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
 
+    def test_sequence(self):
+        data = {'value': 0}
+
+        listeners = events.SyncListeners()
+
+        def listener_1(d):
+            self.assertEqual(d['value'], 0)
+            d['value'] = 1
+
+        def listener_2(d):
+            self.assertEqual(d['value'], 1)
+            d['value'] = 2
+
+        listeners += listener_1
+        listeners += listener_2
+        listeners(data)
+
+        self.assertEqual(data['value'], 2)
+
 
 if __name__ == '__main__':
     unittest.main()

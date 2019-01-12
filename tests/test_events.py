@@ -135,7 +135,7 @@ class TestEvents(unittest.TestCase):
     def test_source_combination(self):
         listeners_called = {'listener_1': False, 'listener_2': False}
 
-        listeners = events.AsyncListeners()
+        listeners = events.SyncListeners()
 
         def listener_1():
             self.assertFalse(listeners_called['listener_1'])
@@ -146,11 +146,10 @@ class TestEvents(unittest.TestCase):
             listeners_called['listener_2'] = True
 
         listeners += listener_1
-        listeners += listeners
         listeners += listener_2
         listeners()
 
-        self.assertEqual(len(listeners), 1)
+        self.assertEqual(len(listeners), 2)
         self.assertTrue(listeners_called['listener_1'])
         self.assertTrue(listeners_called['listener_2'])
 

@@ -35,6 +35,9 @@ class ChainIterables(object):
     def __iter__(self):
         return iter(itertools.chain(self._default_iterable, *self._list_of_iterables))
 
+    def __len__(self):
+        return sum(1 for _ in self.__iter__())
+
 
 class SyncListeners(ChainIterables):
 

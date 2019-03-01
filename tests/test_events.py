@@ -1,6 +1,7 @@
-import unittest
-import pyevents.events as events
 import threading
+import unittest
+
+import pyevents.events as events
 
 
 class TestEvents(unittest.TestCase):
@@ -171,6 +172,32 @@ class TestEvents(unittest.TestCase):
         listeners(data)
 
         self.assertEqual(data['value'], 2)
+
+    def test_event_filter(self):
+        data = {'listener_1_calls': 0, 'listener_2_calls': 0}
+
+        listeners = events.SyncListeners()
+
+        def listener_1(d):
+            data['listener_1_calls'] += 1
+            self.assertNotEqual(d, 'transformed')
+
+        listeners += listener_1
+
+        def listener_2(d):
+            data['listener_2_calls'] += 1
+            self.assertEqual(d, 'transformed')
+
+        ef = events.EventFilter(listeners,
+                                event_filter=lambda x: True if x == 'all_listeners' else False,
+                                event_transformer=lambda x: 'transformed')
+        ef += listener_2
+
+        listeners('listener_1_only')
+        listeners('all_listeners')
+
+        self.assertEqual(data['listener_1_calls'], 2)
+        self.assertEqual(data['listener_2_calls'], 1)
 
 
 if __name__ == '__main__':

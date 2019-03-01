@@ -1,16 +1,24 @@
 import itertools
 import logging
+import typing
 from collections import Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 
 class ChainIterables(object):
+    """
+    List of event listeners.
+    Multiple such lists can be chained.
+    """
+
     def __init__(self, default_iterable=None):
         self._list_of_iterables = list()
         self._default_iterable = default_iterable if default_iterable is not None else list()
         self.__queue = None
 
-    def __iadd__(self, item):
+    def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
+        """Add listeners or other iterables to the list"""
+
         if not isinstance(item, str) and isinstance(item, Iterable):
             if item not in self._list_of_iterables:
                 self._list_of_iterables.append(item)
@@ -22,7 +30,9 @@ class ChainIterables(object):
 
         return self
 
-    def __isub__(self, item):
+    def __isub__(self, item: typing.Union[typing.Iterable, typing.Callable]):
+        """Remove listeners or other iterables from the list"""
+
         if not isinstance(item, str) and isinstance(item, Iterable):
             self._list_of_iterables.remove(item)
         elif isinstance(self._default_iterable, list):
@@ -40,12 +50,13 @@ class ChainIterables(object):
 
 
 class SyncListeners(ChainIterables):
+    """Synchronously call all listeners"""
 
     def __call__(self, *args, **kwargs):
         for l in [l for l in self if l != self]:
             l(*args, **kwargs)
 
-    def __iadd__(self, item):
+    def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         for i in self:
             if i == item:
                 return self
@@ -54,6 +65,7 @@ class SyncListeners(ChainIterables):
 
 
 class AsyncListeners(ChainIterables):
+    """Call listeners via ThreadPool"""
 
     def __init__(self, default_iterable=None):
         super().__init__(default_iterable=default_iterable)
@@ -63,7 +75,7 @@ class AsyncListeners(ChainIterables):
         for l in self:
             self.wrap_async(l, *args, **kwargs)
 
-    def __iadd__(self, item):
+    def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         for i in self:
             if i == item:
                 return self
@@ -105,6 +117,46 @@ class AsyncListeners(ChainIterables):
                 return l.__executor_by_element(fn)
 
         return self._executor
+
+
+class EventFilter(object):
+    """Represents a list "view", where only a subset of events will be routed to the given function"""
+
+    def __init__(self, listeners, event_filter: typing.Callable, event_transformer: typing.Callable = None):
+        """
+        Compute the rolling mean over a column
+        :param listeners: listeners
+        :param event_filter: function, which returns true/false if the event can be accepted
+        :param event_transformer: function that transforms the event. This function should return a single argument (as opposed to tuple)
+        """
+
+        self.listeners = listeners
+        self.event_filter = event_filter
+        self.event_transformer = event_transformer
+        self.functions = dict()
+
+    def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
+        # define a wrapper listener
+        def __anon(*args, **kwargs):
+            if self.event_filter(*args, **kwargs):  # if event is accepted
+                if self.event_transformer is not None:  # transform the data
+                    item(self.event_transformer(*args, **kwargs))
+                else:  # no transformation
+                    item(*args, **kwargs)
+
+        self.functions[item] = __anon
+
+        return self.listeners.__iadd__(__anon)
+
+    def __isub__(self, item: typing.Union[typing.Iterable, typing.Callable]):
+        if item in self.functions:
+            return self.listeners.__isub__(self.functions[item])
+
+    def __getattr__(self, name):
+        return getattr(self.listeners, name)
+
+    def __call__(self, *args, **kwargs):
+        raise Exception("Not Callable")
 
 
 class CompositeEvent(list):

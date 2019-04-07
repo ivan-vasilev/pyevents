@@ -190,7 +190,7 @@ class TestEvents(unittest.TestCase):
 
         ef = events.EventFilter(listeners,
                                 event_filter=lambda x: True if x == 'all_listeners' else False,
-                                event_transformer=lambda x: 'transformed')
+                                event_transformer=lambda x: ('transformed',))
         ef += listener_2
 
         listeners('listener_1_only')

@@ -61,7 +61,9 @@ class SyncListeners(ChainIterables):
             if i == item:
                 return self
 
-        return super().__iadd__(item)
+        super().__iadd__(item)
+
+        return self
 
 
 class AsyncListeners(ChainIterables):
@@ -80,7 +82,9 @@ class AsyncListeners(ChainIterables):
             if i == item:
                 return self
 
-        return super().__iadd__(item)
+        super().__iadd__(item)
+
+        return self
 
     @property
     def _executor(self):
@@ -120,14 +124,14 @@ class AsyncListeners(ChainIterables):
 
 
 class EventFilter(object):
-    """Represents a list "view", where only a subset of events will be routed to the given function"""
+    """Represents events "view", where only a subset of events will be routed to the given function"""
 
     def __init__(self, listeners, event_filter: typing.Callable, event_transformer: typing.Callable = None):
         """
         Compute the rolling mean over a column
         :param listeners: listeners
         :param event_filter: function, which returns true/false if the event can be accepted
-        :param event_transformer: function that transforms the event. This function should return a single argument (as opposed to tuple)
+        :param event_transformer: function that transforms the event. This function should return a *tuple*
         """
 
         self.listeners = listeners
@@ -140,17 +144,20 @@ class EventFilter(object):
         def __anon(*args, **kwargs):
             if self.event_filter(*args, **kwargs):  # if event is accepted
                 if self.event_transformer is not None:  # transform the data
-                    item(self.event_transformer(*args, **kwargs))
+                    item(*self.event_transformer(*args, **kwargs))
                 else:  # no transformation
                     item(*args, **kwargs)
 
         self.functions[item] = __anon
 
-        return self.listeners.__iadd__(__anon)
+        self.listeners.__iadd__(__anon)
+
+        return self
 
     def __isub__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         if item in self.functions:
-            return self.listeners.__isub__(self.functions[item])
+            self.listeners.__isub__(self.functions[item])
+            return self
 
     def __getattr__(self, name):
         return getattr(self.listeners, name)

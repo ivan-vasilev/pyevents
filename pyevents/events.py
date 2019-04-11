@@ -126,7 +126,7 @@ class AsyncListeners(ChainIterables):
 class EventFilter(object):
     """Represents events "view", where only a subset of events will be routed to the given function"""
 
-    def __init__(self, listeners, event_filter: typing.Callable, event_transformer: typing.Callable = None):
+    def __init__(self, listeners, event_filter: typing.Callable = None, event_transformer: typing.Callable = None):
         """
         Compute the rolling mean over a column
         :param listeners: listeners
@@ -142,7 +142,13 @@ class EventFilter(object):
     def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         # define a wrapper listener
         def __anon(*args, **kwargs):
-            if self.event_filter(*args, **kwargs):  # if event is accepted
+            if self.event_filter is not None:
+                if self.event_filter(*args, **kwargs):  # if event is accepted
+                    if self.event_transformer is not None:  # transform the data
+                        item(*self.event_transformer(*args, **kwargs))
+                    else:  # no transformation
+                        item(*args, **kwargs)
+            else:
                 if self.event_transformer is not None:  # transform the data
                     item(*self.event_transformer(*args, **kwargs))
                 else:  # no transformation
@@ -157,6 +163,7 @@ class EventFilter(object):
     def __isub__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         if item in self.functions:
             self.listeners.__isub__(self.functions[item])
+            del self.functions[item]
             return self
 
     def __getattr__(self, name):
@@ -164,6 +171,31 @@ class EventFilter(object):
 
     def __call__(self, *args, **kwargs):
         raise Exception("Not Callable")
+
+    def filter(self, event_filter: typing.Callable):
+        """
+        Represents events "view" over the existing "view". Additional filter on top of the existing one
+        :param event_filter: function, which returns true/false if the event can be accepted
+        :return: child EventFilter
+        """
+        return EventFilter(listeners=self, event_filter=event_filter)
+
+    def transform(self, transformer: typing.Callable):
+        """
+        Represents event transformer over the existing "view". Additional data processing on top of the existing one
+        :param transformer: function that transforms the event. This function should return a *tuple*
+        :return: child EventFilter
+        """
+        return EventFilter(listeners=self, event_transformer=transformer)
+
+    def filter_and_transform(self, event_filter: typing.Callable = None, event_transformer: typing.Callable = None):
+        """
+        Represents events "view" over the existing "view". Additional filter and/or data processing on top of the existing one
+        :param event_filter: function, which returns true/false if the event can be accepted
+        :param event_transformer: function that transforms the event. This function should return a *tuple*
+        :return: child EventFilter
+        """
+        return EventFilter(listeners=self, event_filter=event_filter, event_transformer=event_transformer)
 
 
 class CompositeEvent(list):

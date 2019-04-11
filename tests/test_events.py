@@ -199,6 +199,47 @@ class TestEvents(unittest.TestCase):
         self.assertEqual(data['listener_1_calls'], 2)
         self.assertEqual(data['listener_2_calls'], 1)
 
+    def test_event_filter_2(self):
+        calls_count = {'listener_1_calls': 0, 'listener_2_calls': 0, 'listener_3_calls': 0}
+
+        listeners = events.SyncListeners()
+
+        def listener_1(d):
+            calls_count['listener_1_calls'] += 1
+
+        listeners += listener_1
+
+        def listener_2(d):
+            calls_count['listener_2_calls'] += 1
+            self.assertEqual(d['data'], 'transformed')
+
+        ef = events.EventFilter(listeners,
+                                event_filter=lambda x: True if x['type'] == 'all_listeners' else False,
+                                event_transformer=lambda x: ({**x, **{'data': 'transformed'}}, ))
+        ef += listener_2
+
+        def listener_3(d):
+            calls_count['listener_3_calls'] += 1
+            self.assertEqual(d['data'], 'transformed')
+
+        child_ef = ef.filter_and_transform(event_filter=lambda x: True if x['type'] == 'all_listeners' and 'additional_condition' in x else False,
+                                           event_transformer=lambda x: ({**x, **{'data': x['data']}}, ))
+
+        child_ef += listener_3
+
+        listeners({'type': 'listener_1_only'})
+        listeners({'type': 'all_listeners'})
+
+        self.assertEqual(calls_count['listener_1_calls'], 2)
+        self.assertEqual(calls_count['listener_2_calls'], 1)
+        self.assertEqual(calls_count['listener_3_calls'], 0)
+
+        listeners({'type': 'all_listeners', 'additional_condition': True})
+
+        self.assertEqual(calls_count['listener_1_calls'], 3)
+        self.assertEqual(calls_count['listener_2_calls'], 2)
+        self.assertEqual(calls_count['listener_3_calls'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

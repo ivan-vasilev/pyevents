@@ -53,8 +53,9 @@ class SyncListeners(ChainIterables):
     """Synchronously call all listeners"""
 
     def __call__(self, *args, **kwargs):
-        for l in [l for l in self if l != self]:
-            l(*args, **kwargs)
+        for l in self:
+            if l != self:
+                l(*args, **kwargs)
 
     def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         for i in self:
@@ -128,7 +129,6 @@ class EventFilter(object):
 
     def __init__(self, listeners, event_filter: typing.Callable = None, event_transformer: typing.Callable = None):
         """
-        Compute the rolling mean over a column
         :param listeners: listeners
         :param event_filter: function, which returns true/false if the event can be accepted
         :param event_transformer: function that transforms the event. This function should return a *tuple*
@@ -141,22 +141,35 @@ class EventFilter(object):
 
     def __iadd__(self, item: typing.Union[typing.Iterable, typing.Callable]):
         # define a wrapper listener
-        def __anon(*args, **kwargs):
-            if self.event_filter is not None:
-                if self.event_filter(*args, **kwargs):  # if event is accepted
-                    if self.event_transformer is not None:  # transform the data
-                        item(*self.event_transformer(*args, **kwargs))
-                    else:  # no transformation
-                        item(*args, **kwargs)
-            else:
-                if self.event_transformer is not None:  # transform the data
+
+        fn = None
+
+        if self.event_filter is not None and self.event_transformer is not None:
+            def __fn1(*args, **kwargs):
+                if self.event_filter(*args, **kwargs):
                     item(*self.event_transformer(*args, **kwargs))
-                else:  # no transformation
+
+            fn = __fn1
+        elif self.event_filter is not None and self.event_transformer is None:
+            def __fn2(*args, **kwargs):
+                if self.event_filter(*args, **kwargs):
                     item(*args, **kwargs)
 
-        self.functions[item] = __anon
+            fn = __fn2
+        elif self.event_filter is None and self.event_transformer is not None:
+            def __fn3(*args, **kwargs):
+                item(*self.event_transformer(*args, **kwargs))
 
-        self.listeners.__iadd__(__anon)
+            fn = __fn3
+        elif self.event_filter is None and self.event_transformer is None:
+            def __fn4(*args, **kwargs):
+                item(*args, **kwargs)
+
+            fn = __fn4
+
+        self.functions[item] = fn
+
+        self.listeners.__iadd__(fn)
 
         return self
 

@@ -189,7 +189,7 @@ class TestEvents(unittest.TestCase):
             self.assertEqual(d, 'transformed')
 
         ef = events.EventFilter(listeners,
-                                event_filter=lambda x: True if x == 'all_listeners' else False,
+                                event_filter=lambda x: x == 'all_listeners',
                                 event_transformer=lambda x: ('transformed',))
         ef += listener_2
 
@@ -214,7 +214,7 @@ class TestEvents(unittest.TestCase):
             self.assertEqual(d['data'], 'transformed')
 
         ef = events.EventFilter(listeners,
-                                event_filter=lambda x: True if x['type'] == 'all_listeners' else False,
+                                event_filter=lambda x: x['type'] == 'all_listeners',
                                 event_transformer=lambda x: ({**x, **{'data': 'transformed'}}, ))
         ef += listener_2
 
